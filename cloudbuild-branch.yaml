@@ -1,0 +1,48 @@
+steps:
+
+  ### Build
+    - id: 'build'
+      name: 'gcr.io/cloud-builders/docker'
+      entrypoint: 'bash'
+      args: 
+        - '-c'
+        - |
+            docker build -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/quickstart-docker-repo/$_APP_NAME:${BRANCH_NAME}-${SHORT_SHA} ./src
+  
+  ### Publish
+    - id: 'publish'
+      name: 'gcr.io/cloud-builders/docker'
+      entrypoint: 'bash'
+      args: 
+        - '-c'
+        - |
+            docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/quickstart-docker-repo/$_APP_NAME:${BRANCH_NAME}-${SHORT_SHA}
+  
+  
+  
+  ### Deploy
+    - id: 'deploy'
+      name: 'gcr.io/cloud-builders/gcloud'
+      env:
+        - 'KUBECONFIG=/kube/config'
+      entrypoint: 'bash'
+      args:
+        - '-c'
+        - |
+         
+            PROJECT=$$(gcloud config get-value core/project)
+          
+            
+            gcloud container clusters get-credentials "${_CLUSTER}" \
+              --project "$${PROJECT}" \
+              --zone "${_ZONE}"  
+  
+            sed -i 's|gcr.io/$PROJECT_ID/$_APP_NAME:.*|${_REGION}-docker.pkg.dev/${PROJECT_ID}/quickstart-docker-repo/$_APP_NAME:${BRANCH_NAME}-${SHORT_SHA}|' ./k8s/deployments/dev/*.yaml
+            
+            kubectl get ns ${BRANCH_NAME} || kubectl create ns ${BRANCH_NAME}
+            kubectl apply --namespace ${BRANCH_NAME} --recursive -f k8s/deployments/dev
+            kubectl apply --namespace ${BRANCH_NAME} --recursive -f k8s/services
+  
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/quickstart-docker-repo/$_APP_NAME:${BRANCH_NAME}-${SHORT_SHA}'
+  
